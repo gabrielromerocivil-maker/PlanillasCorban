@@ -659,6 +659,9 @@ function clasificarToken(t) {
     return ["otro", t];
   }
   if (/^\d+$/.test(t)) {
+    // Códigos numéricos de AFP (230301 Porvenir, 230201 Protección, 231001
+    // Colfondos…) superan 100000 pero son CÓDIGOS, no montos.
+    if (t in CODIGOS_AFP) return ["codigo", t];
     const n = Number(t);
     if (n >= 100000) return ["monto", t];
     if (n >= 1 && n <= 31 && t.length <= 2) return ["dias", t];
@@ -783,21 +786,32 @@ function parsearTrabajadoresDesdeTexto(texto) {
     if (!m) continue;
     const cedula = m[3];
 
+    // El registro de un trabajador puede repartirse en varias líneas
+    // reconstruidas por coordenada Y: el nombre puede partirse en dos renglones
+    // y los datos (código/IBC/aporte de cada riesgo) suelen quedar en su propio
+    // renglón. Se reúnen esas líneas hasta el siguiente trabajador o el fin de
+    // la sección, separando las de "solo nombre" de las que traen datos.
+    const partesBloc = [lineas[i]];   // línea "N CC cédula …"
     const nombreExtra = [];
     const digitosSueltos = [];
-    for (let j = i + 1; j < Math.min(i + 5, lineas.length); j++) {
+    for (let j = i + 1; j < Math.min(i + 7, lineas.length); j++) {
       const sig = lineas[j].trim();
       if (!sig) continue;
       if (patron.test(lineas[j]) || rxFinSeccion.test(sig)) break;
       const tokensSig = sig.split(/\s+/);
-      if (!tokensSig.every(t => rxTokenCont.test(t))) break;
-      for (const t of tokensSig) {
-        if (/^\d+$/.test(t)) digitosSueltos.push(t);
-        else nombreExtra.push(t);
+      if (tokensSig.every(t => rxTokenCont.test(t))) {
+        // Renglón de solo nombre (o días sueltos): continúa el nombre.
+        for (const t of tokensSig) {
+          if (/^\d+$/.test(t)) digitosSueltos.push(t);
+          else nombreExtra.push(t);
+        }
+      } else {
+        // Renglón con datos (códigos, IBC, aportes) del mismo trabajador.
+        partesBloc.push(lineas[j]);
       }
     }
 
-    const info = parsearBloqueTrabajador(lineas[i], cedula);
+    const info = parsearBloqueTrabajador(partesBloc.join(" "), cedula);
     if (info) {
       if (nombreExtra.length) info.nombre = (info.nombre + " " + nombreExtra.join(" ")).trim();
       info.digitos_sueltos = digitosSueltos;
