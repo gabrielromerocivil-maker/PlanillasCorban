@@ -119,7 +119,7 @@
   .status.error { color: #B3261E; font-weight: 600; }
   .status.ok    { color: #1B7F4D; font-weight: 600; }
 
-  .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin: 14px 0; }
+  .metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin: 14px 0; }
   .metric {
     background: #fff; border: 1px solid var(--borde); border-top: 3px solid var(--celeste);
     border-radius: 10px; padding: 14px 18px;
@@ -128,6 +128,44 @@
   .metric .val { font-family: 'Montserrat', sans-serif; font-size: 1.45rem; font-weight: 800; color: var(--navy); margin-top: 2px; }
   .metric.alerta { border-top-color: #E2A03F; }
   .metric.alerta .lbl { color: #9A6700; }
+  .metric.mal { border-top-color: #B3261E; }
+  .metric.mal .lbl { color: #B3261E; }
+  .metric.mal .val { color: #B3261E; }
+
+  /* ── Campo de días de ejecución y barra de guardado ── */
+  .config-fila {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    background: #fff; border: 1px solid var(--borde); border-left: 5px solid var(--azul);
+    border-radius: 0 10px 10px 0; padding: 12px 18px; margin: 10px 0;
+  }
+  .config-fila label { font-size: .84rem; color: var(--navy); font-weight: 600; }
+  .config-fila input[type="number"] {
+    width: 90px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px;
+    font-family: 'Open Sans', sans-serif; font-size: .9rem; color: var(--text);
+  }
+  .config-fila input[type="number"]:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 2px #EAF6FF; }
+  .config-fila .hint { font-size: .78rem; color: var(--muted); }
+
+  .guardado-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    background: #F2FAFF; border: 1px solid var(--borde); border-radius: 10px;
+    padding: 10px 16px; margin: 10px 0;
+  }
+  .guardado-bar .gb-info { font-size: .8rem; color: var(--muted); flex: 1; min-width: 200px; }
+  .guardado-bar .gb-info b { color: var(--navy); }
+  .btn-chip {
+    background: #fff; color: var(--navy); border: 1px solid var(--borde);
+    font-family: 'Montserrat', sans-serif; font-weight: 600; font-size: .76rem;
+    letter-spacing: .5px; padding: 7px 14px; border-radius: 14px; cursor: pointer;
+    transition: background .15s, color .15s; white-space: nowrap;
+  }
+  .btn-chip:hover { background: var(--navy); color: #fff; }
+  .btn-chip.rojo { color: #B3261E; border-color: #E5C5C2; }
+  .btn-chip.rojo:hover { background: #B3261E; color: #fff; }
+
+  td.val-ok  { color: #1B7F4D; font-weight: 600; white-space: normal; }
+  td.val-mal { color: #B3261E; font-weight: 600; white-space: normal; }
+  thead th.grp-ibc { background: #1f6f9e; border-bottom: 2px solid var(--celeste); }
 
   .tabla-scroll { overflow-x: auto; background: #fff; border: 1px solid var(--borde); border-radius: 12px; }
   table { border-collapse: collapse; width: 100%; font-size: .8rem; min-width: 1750px; }
@@ -187,15 +225,30 @@
     <span class="t">📁 Paso 1 — Lista de profesionales (opcional)</span>
     <button class="btn-limpiar hidden" id="btnVaciarProf">✕ Quitar lista</button>
   </div>
-  <p class="caption">Si NO subes lista, se listan <b>todos los cotizantes</b> encontrados en la planilla. Sube un Excel/CSV (columnas: Nombre, Cédula, Cargo) solo si quieres filtrar/cruzar.</p>
+  <p class="caption">Si NO subes lista, se listan <b>todos los cotizantes</b> encontrados en la planilla. Sube un Excel/CSV (columnas: <b>Nombre, Cédula, Cargo</b> y opcionalmente <b>IBC</b> y <b>Días</b>) para filtrar/cruzar y <b>validar que el IBC de la planilla coincida</b> con el IBC del profesional ajustado a los días de ejecución del mes.</p>
   <div class="dropzone" id="dzProf">
     <div class="dz-icon">📋</div>
     <div class="dz-main">Excel o CSV de profesionales (opcional)</div>
-    <div class="dz-hint">Clic para seleccionar o arrastra el archivo aquí</div>
+    <div class="dz-hint">Columnas reconocidas: Nombre · Cédula · Cargo · IBC (salario base) · Días (opcional, por profesional)</div>
   </div>
   <input type="file" id="inProf" accept=".xlsx,.xls,.csv">
   <div class="filelist" id="chipProf"></div>
   <div class="status" id="stProf"></div>
+
+  <!-- Días de ejecución del mes (base del prorrateo del IBC) -->
+  <div class="config-fila">
+    <label for="inDias">📅 Días de ejecución del mes:</label>
+    <input type="number" id="inDias" min="1" max="31" step="1" value="30">
+    <span class="hint">30 = mes completo (el IBC de la lista se toma tal cual). Si es menor, el IBC esperado = IBC&nbsp;/&nbsp;30&nbsp;×&nbsp;días. Si un profesional trae su propia columna <b>Días</b>, esa tiene prioridad.</span>
+  </div>
+
+  <!-- Guardado de la información (persistencia local en este equipo) -->
+  <div class="guardado-bar">
+    <div class="gb-info" id="gbInfo">💾 El trabajo se guarda automáticamente en este navegador.</div>
+    <button class="btn-chip" id="btnGuardar">💾 Guardar ahora</button>
+    <button class="btn-chip" id="btnRestaurar">♻️ Restaurar guardado</button>
+    <button class="btn-chip rojo" id="btnBorrarGuardado">🗑 Borrar guardado</button>
+  </div>
 
   <!-- PASO 2 -->
   <div class="paso">
@@ -227,6 +280,7 @@
       <div class="metric"><div class="lbl">Por completar</div><div class="val" id="mFalta">0</div></div>
       <div class="metric"><div class="lbl">Total aportes</div><div class="val" id="mAportes">$0</div></div>
       <div class="metric alerta"><div class="lbl">Mora (planillas)</div><div class="val" id="mMora">$0</div></div>
+      <div class="metric mal"><div class="lbl">IBC con diferencia</div><div class="val" id="mIbcDif">0</div></div>
     </div>
     <p class="caption">✏️ Puedes editar cualquier celda (clic sobre ella). Los cambios se incluyen en el Excel descargado.</p>
     <div class="tabla-scroll">
@@ -234,6 +288,8 @@
         <thead><tr>
           <th>Nombre Completo</th><th>Cédula</th><th>Cargo</th><th>EPS</th><th>ARL</th>
           <th>Fondo de Pensión</th><th>IBC Salud</th><th>IBC Pensión</th>
+          <th class="grp-ibc">IBC Lista</th><th class="grp-ibc">Días Ejec.</th>
+          <th class="grp-ibc">IBC Ajustado</th><th class="grp-ibc">Validación IBC</th>
           <th class="grp-aporte">Aporte Pensión</th><th class="grp-aporte">Aporte Salud</th>
           <th class="grp-aporte">Aporte CCF</th><th class="grp-aporte">Aporte Riesgos</th>
           <th class="grp-aporte">Total Aportes</th><th class="grp-aporte">Mora</th>
@@ -654,10 +710,25 @@ function parsearBloqueTrabajador(bloque, cedula) {
     return montos;
   };
 
+  // Días cotizados del bloque de un código: primer token "dias" antes del siguiente código.
+  const diasDespues = (idx) => {
+    if (idx < 0) return "";
+    for (let j = idx + 1; j < clasificados.length; j++) {
+      const [tipo, val] = clasificados[j];
+      if (tipo === "codigo" && j > idx + 1) break;
+      if (tipo === "dias") return val;
+    }
+    return "";
+  };
+
   const mAfp = posCodigos.length >= 1 ? montosDespues(posCodigos[0]) : [];
   const mEps = posCodigos.length >= 2 ? montosDespues(posCodigos[1]) : [];
   const mCcf = posCodigos.length >= 3 ? montosDespues(posCodigos[2]) : [];
   const mArl = posCodigos.length >= 4 ? montosDespues(posCodigos[3]) : [];
+
+  // Días representativos del trabajador (se prefiere salud; si no, pensión/CCF/ARL).
+  const diasTrab = diasDespues(posCodigos[1]) || diasDespues(posCodigos[0]) ||
+                   diasDespues(posCodigos[2]) || diasDespues(posCodigos[3]) || "";
 
   const aportes = {
     pension: mAfp[1] || "",
@@ -674,6 +745,7 @@ function parsearBloqueTrabajador(bloque, cedula) {
     eps: codigosVal[1] || "",
     ccf: codigosVal[2] || "",
     arl: codigosVal[3] || "",
+    dias_pila: diasTrab,
     ibc_pension: fmtMoneda(mAfp[0] || ""),
     ibc_salud:   fmtMoneda(mEps[0] || ""),
     ibc_arl:     fmtMoneda(mArl[0] || ""),
@@ -825,6 +897,12 @@ function procesarTextoCompleto(texto, nombreArchivo) {
       arl: resolverCodigo(w.arl, arlDict, "ARL"),
       ibc_salud: w.ibc_salud || "",
       ibc_pension: w.ibc_pension || "",
+      dias_pila: w.dias_pila || "",
+      ibc_lista: "",
+      dias_lista: "",
+      dias_ejec: "",
+      ibc_ajustado: "",
+      ibc_validacion: "",
       aporte_pension: w.aporte_pension || "",
       aporte_salud:   w.aporte_salud || "",
       aporte_ccf:     w.aporte_ccf || "",
@@ -865,7 +943,48 @@ function procesarTextoCompleto(texto, nombreArchivo) {
     }
   }
 
-  return { resultados, mora, numPlanilla };
+  return { resultados, mora, numPlanilla, perPension, perSalud };
+}
+
+// ── Validación de IBC contra el IBC anexado en la lista (Paso 1) ────────────
+// Regla: si la ejecución es de 30 días, el IBC de la planilla debe ser IGUAL
+// al IBC de la lista. Si es menor, el IBC esperado = IBC_lista / 30 × días.
+function validarIbcProfesional(row, prof, diasGlobal) {
+  row.ibc_lista = "";
+  row.dias_lista = String(prof.diasLista || "").trim();
+  row.dias_ejec = "";
+  row.ibc_ajustado = "";
+  row.ibc_validacion = "";
+
+  const ibcListaNum = montoANumero(prof.ibc);
+  if (!ibcListaNum) return;   // el profesional no trae IBC en la lista → no se valida
+
+  const soloDigitos = (v) => Number(String(v || "").replace(/\D/g, "")) || 0;
+  // Prioridad de días: columna Días del profesional → días detectados en el PDF → días global.
+  let dias = soloDigitos(prof.diasLista) || soloDigitos(row.dias_pila) || diasGlobal || 30;
+  if (dias < 1) dias = 1;
+  if (dias > 30) dias = 30;   // base de prorrateo siempre 30
+
+  const ajustado = Math.round((ibcListaNum * dias) / 30);
+  row.ibc_lista = fmtMoneda(String(ibcListaNum));
+  row.dias_ejec = String(dias);
+  row.ibc_ajustado = fmtMoneda(String(ajustado));
+
+  const planillaIbc = montoANumero(row.ibc_salud) || montoANumero(row.ibc_pension);
+  if (!planillaIbc) {
+    row.ibc_validacion = "Sin IBC en planilla";
+    return;
+  }
+  const dif = planillaIbc - ajustado;
+  if (Math.abs(dif) <= 1) {            // tolerancia de $1 por redondeo
+    row.ibc_validacion = "✔ Coincide";
+  } else {
+    const signo = dif > 0 ? "+" : "-";
+    row.ibc_validacion = `✖ Difiere (${signo}${fmtMoneda(String(Math.abs(dif)))})`;
+    row.notas = (row.notas +
+      ` IBC planilla ${fmtMoneda(String(planillaIbc))} ≠ esperado ${row.ibc_ajustado}` +
+      ` (IBC lista ${row.ibc_lista} × ${dias}/30).`).trim();
+  }
 }
 
 // ── Cruce con lista de profesionales (opcional) ────────────────────────────
@@ -880,7 +999,7 @@ function similitudNombres(a, b) {
   return (2 * inter) / (ta.size + tb.size);
 }
 
-function cruzarConProfesionales(resultados, profesionales, nombreArchivo, perPension, perSalud, numPlanilla) {
+function cruzarConProfesionales(resultados, profesionales, nombreArchivo, perPension, perSalud, numPlanilla, diasGlobal) {
   const salida = [];
   for (const prof of profesionales) {
     const cedProf = String(prof.cedula || "").replace(/\D/g, "");
@@ -896,22 +1015,26 @@ function cruzarConProfesionales(resultados, profesionales, nombreArchivo, perPen
       if (mejor >= 0.72) match = mejorR;
     }
 
+    let fila;
     if (match) {
-      salida.push({ ...match, nombre: prof.nombre || match.nombre,
-        cedula: cedProf || match.cedula, cargo: prof.cargo || "" });
+      fila = { ...match, nombre: prof.nombre || match.nombre,
+        cedula: cedProf || match.cedula, cargo: prof.cargo || "" };
     } else {
-      salida.push({
+      fila = {
         nombre: prof.nombre || "", cedula: cedProf, cargo: prof.cargo || "",
         planilla: nombreArchivo, eps: "", arl: "", fondo_pension: "",
-        ibc_salud: "", ibc_pension: "",
+        ibc_salud: "", ibc_pension: "", dias_pila: "",
+        ibc_lista: "", dias_lista: "", dias_ejec: "", ibc_ajustado: "", ibc_validacion: "",
         aporte_pension: "", aporte_salud: "", aporte_ccf: "", aporte_riesgos: "",
         total_aportes: "", mora_trabajador: "",
         periodo_pension: perPension, periodo_salud: perSalud,
         num_planilla: numPlanilla || "",
         estado: "No encontrado",
         notas: "No detectado en el PDF — completar manualmente.",
-      });
+      };
     }
+    validarIbcProfesional(fila, prof, diasGlobal);
+    salida.push(fila);
   }
   return salida;
 }
@@ -972,9 +1095,123 @@ async function extraerTextoPdf(arrayBuffer) {
 const $ = (id) => document.getElementById(id);
 
 let archivosPdf = [];        // [{name, buffer}]
-let profesionales = null;    // [{nombre, cedula, cargo}] | null
+let profesionales = null;    // [{nombre, cedula, cargo, ibc, diasLista}] | null
 let resultados = [];
 let morasPlanillas = {};     // {nombreArchivo: {dias, intereses, valorPagar}}
+
+// Días de ejecución del mes (base del prorrateo del IBC). 30 = mes completo.
+function diasEjecucionGlobal() {
+  const v = parseInt($("inDias").value, 10);
+  if (!Number.isFinite(v) || v < 1) return 30;
+  return Math.min(v, 31);
+}
+
+/* ===========================================================================
+   PERSISTENCIA — guardado de la información en este equipo (localStorage)
+   No se guardan los PDF (son pesados): se guarda el resultado ya procesado,
+   la lista de profesionales, las moras y los días de ejecución. Así puedes
+   cerrar y retomar el trabajo sin perder lo editado.
+   =========================================================================== */
+const STORAGE_KEY = "corban_planillas_v1";
+let guardadoTimer = null;
+
+function guardarEstado() {
+  try {
+    const data = {
+      v: 1,
+      ts: Date.now(),
+      diasEjec: $("inDias").value,
+      profesionales: profesionales,
+      morasPlanillas: morasPlanillas,
+      resultados: resultados,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    actualizarInfoGuardado(data.ts);
+  } catch (err) {
+    console.error("No se pudo guardar:", err);
+    $("gbInfo").innerHTML = "⚠️ No se pudo guardar (almacenamiento lleno o bloqueado).";
+  }
+}
+
+// Autoguardado con retardo (para no escribir en cada tecla mientras se edita).
+function guardarEstadoDebounce() {
+  clearTimeout(guardadoTimer);
+  guardadoTimer = setTimeout(guardarEstado, 800);
+}
+
+function leerGuardado() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function actualizarInfoGuardado(ts) {
+  if (!ts) { $("gbInfo").innerHTML = "💾 El trabajo se guarda automáticamente en este navegador."; return; }
+  const f = new Date(ts);
+  const fecha = f.toLocaleDateString("es-CO") + " " +
+                f.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  $("gbInfo").innerHTML = `💾 Guardado en este equipo · última vez: <b>${fecha}</b>`;
+}
+
+function reflejarProfesionalesUI(nombreArchivo) {
+  if (!profesionales) return;
+  const conIbc = profesionales.filter(p => montoANumero(p.ibc) > 0).length;
+  $("chipProf").innerHTML = `<span class="filechip">📋 ${nombreArchivo || "lista guardada"} <b data-rm>✕</b></span>`;
+  $("chipProf").querySelector("[data-rm]").onclick = vaciarProf;
+  $("stProf").textContent = `✅ ${profesionales.length} profesionales (restaurados)` +
+    (conIbc ? ` · ${conIbc} con IBC.` : ".");
+  $("stProf").className = "status ok";
+  $("btnVaciarProf").classList.remove("hidden");
+}
+
+function restaurarEstado(silencioso) {
+  const data = leerGuardado();
+  if (!data) {
+    if (!silencioso) alert("No hay información guardada en este equipo.");
+    return false;
+  }
+  if (typeof data.diasEjec !== "undefined" && data.diasEjec !== "") $("inDias").value = data.diasEjec;
+  profesionales = data.profesionales || null;
+  morasPlanillas = data.morasPlanillas || {};
+  resultados = Array.isArray(data.resultados) ? data.resultados : [];
+
+  if (profesionales) reflejarProfesionalesUI();
+  if (resultados.length) pintarResultados();
+  actualizarInfoGuardado(data.ts);
+  actualizarBotones();
+  if (!silencioso) {
+    const st = $("stProc");
+    st.textContent = `♻️ Información restaurada (${resultados.length} registros). ` +
+      "Las planillas PDF no se guardan; vuelve a subirlas solo si necesitas reprocesar.";
+    st.className = "status ok";
+  }
+  return true;
+}
+
+function borrarGuardado() {
+  if (!confirm("¿Borrar la información guardada en este equipo? Esta acción no se puede deshacer.")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  actualizarInfoGuardado(null);
+  $("stProc").textContent = "🗑 Guardado borrado.";
+  $("stProc").className = "status";
+}
+
+// Reaplica el cambio del campo "Días de ejecución" a todas las filas ya procesadas.
+function reaplicarDiasGlobal() {
+  guardarEstadoDebounce();
+  if (!resultados.length) return;
+  const g = diasEjecucionGlobal();
+  const soloDig = v => Number(String(v || "").replace(/\D/g, "")) || 0;
+  for (const r of resultados) {
+    if (!montoANumero(r.ibc_lista)) continue;
+    let dias = soloDig(r.dias_lista) || soloDig(r.dias_pila) || g || 30;
+    if (dias > 30) dias = 30;
+    r.dias_ejec = String(dias);
+    revalidarFila(r);
+  }
+  pintarResultados();
+}
 
 // ── Dropzones ───────────────────────────────────────────────────────────────
 function configurarDropzone(dz, input, onFiles) {
@@ -1018,6 +1255,8 @@ configurarDropzone($("dzProf"), $("inProf"), async (files) => {
     const cNom = buscarCol(filas[0], ["nombre", "name", "profesional"]);
     const cCed = buscarCol(filas[0], ["cedula", "documento", "identificacion", "cc", "nit"]);
     const cCar = buscarCol(filas[0], ["cargo", "rol", "perfil", "posicion"]);
+    const cIbc = buscarCol(filas[0], ["ibc", "salario", "base de cotiz", "honorario", "asignacion", "sueldo"]);
+    const cDia = buscarCol(filas[0], ["dias", "días", "dia laborad", "dias ejec"]);
     if (!cNom) throw new Error("No se encontró columna 'Nombre'.");
 
     profesionales = filas
@@ -1025,13 +1264,18 @@ configurarDropzone($("dzProf"), $("inProf"), async (files) => {
         nombre: String(r[cNom] || "").trim(),
         cedula: cCed ? String(r[cCed] || "").trim() : "",
         cargo:  cCar ? String(r[cCar] || "").trim() : "",
+        ibc:    cIbc ? String(r[cIbc] || "").trim() : "",
+        diasLista: cDia ? String(r[cDia] || "").trim() : "",
       }))
       .filter(p => p.nombre);
 
+    const conIbc = profesionales.filter(p => montoANumero(p.ibc) > 0).length;
     $("chipProf").innerHTML = `<span class="filechip">📋 ${f.name} <b data-rm>✕</b></span>`;
     $("chipProf").querySelector("[data-rm]").onclick = vaciarProf;
-    $("stProf").textContent = `✅ ${profesionales.length} profesionales cargados.`;
+    $("stProf").textContent = `✅ ${profesionales.length} profesionales cargados` +
+      (cIbc ? ` · ${conIbc} con IBC para validar.` : " · sin columna IBC (no se validará el IBC).");
     $("stProf").className = "status ok";
+    guardarEstado();
     $("btnVaciarProf").classList.remove("hidden");
     actualizarBotones();
   } catch (err) {
@@ -1087,6 +1331,17 @@ $("btnVaciarProf").addEventListener("click", vaciarProf);
 $("btnVaciarPdf").addEventListener("click", vaciarPdfs);
 $("btnNueva").addEventListener("click", vaciarTodo);
 
+// ── Guardado / restauración ──────────────────────────────────────────────────
+$("btnGuardar").addEventListener("click", () => {
+  guardarEstado();
+  const st = $("stProc");
+  st.textContent = "💾 Información guardada en este equipo.";
+  st.className = "status ok";
+});
+$("btnRestaurar").addEventListener("click", () => restaurarEstado(false));
+$("btnBorrarGuardado").addEventListener("click", borrarGuardado);
+$("inDias").addEventListener("change", reaplicarDiasGlobal);
+
 // ── Procesar ────────────────────────────────────────────────────────────────
 $("btnProcesar").addEventListener("click", async () => {
   const st = $("stProc");
@@ -1101,12 +1356,13 @@ $("btnProcesar").addEventListener("click", async () => {
 
       // pdf.js consume el buffer: pasar una copia
       const texto = await extraerTextoPdf(f.buffer.slice(0));
-      const { resultados: lote, mora, numPlanilla } = procesarTextoCompleto(texto, f.name);
+      const { resultados: lote, mora, numPlanilla, perPension, perSalud } =
+        procesarTextoCompleto(texto, f.name);
       morasPlanillas[f.name] = { ...mora, numPlanilla };
 
       if (profesionales) {
-        const [pp, ps] = extraerPeriodos(texto);
-        resultados.push(...cruzarConProfesionales(lote, profesionales, f.name, pp, ps, numPlanilla));
+        resultados.push(...cruzarConProfesionales(
+          lote, profesionales, f.name, perPension, perSalud, numPlanilla, diasEjecucionGlobal()));
       } else {
         resultados.push(...lote);
       }
@@ -1120,6 +1376,7 @@ $("btnProcesar").addEventListener("click", async () => {
     st.textContent = "✅ Procesamiento completado.";
     st.className = "status ok";
     pintarResultados();
+    guardarEstado();
   } catch (err) {
     st.textContent = "❌ Error: " + err.message;
     st.className = "status error";
@@ -1130,11 +1387,37 @@ $("btnProcesar").addEventListener("click", async () => {
 // ── Tabla editable ──────────────────────────────────────────────────────────
 const CAMPOS = ["nombre","cedula","cargo","eps","arl","fondo_pension",
                 "ibc_salud","ibc_pension",
+                "ibc_lista","dias_ejec","ibc_ajustado","ibc_validacion",
                 "aporte_pension","aporte_salud","aporte_ccf","aporte_riesgos","total_aportes",
                 "mora_trabajador","periodo_pension","periodo_salud","num_planilla",
                 "planilla","estado","notas"];
-const CAMPOS_NUM = new Set(["ibc_salud","ibc_pension","aporte_pension","aporte_salud",
+const CAMPOS_NUM = new Set(["ibc_salud","ibc_pension","ibc_lista","dias_ejec","ibc_ajustado",
+                            "aporte_pension","aporte_salud",
                             "aporte_ccf","aporte_riesgos","total_aportes","mora_trabajador"]);
+
+// Recalcula IBC ajustado y validación de una fila a partir de sus valores actuales
+// (se usa cuando el usuario edita manualmente IBC salud / IBC lista / días).
+function revalidarFila(r) {
+  const ibcLista = montoANumero(r.ibc_lista);
+  if (!ibcLista) { r.ibc_ajustado = ""; r.ibc_validacion = ""; return; }
+  let dias = parseInt(String(r.dias_ejec || "").replace(/\D/g, ""), 10);
+  if (!Number.isFinite(dias) || dias < 1) dias = 30;
+  if (dias > 30) dias = 30;
+  const ajustado = Math.round((ibcLista * dias) / 30);
+  r.ibc_ajustado = fmtMoneda(String(ajustado));
+  const planillaIbc = montoANumero(r.ibc_salud) || montoANumero(r.ibc_pension);
+  if (!planillaIbc) { r.ibc_validacion = "Sin IBC en planilla"; return; }
+  const dif = planillaIbc - ajustado;
+  r.ibc_validacion = Math.abs(dif) <= 1
+    ? "✔ Coincide"
+    : `✖ Difiere (${dif > 0 ? "+" : "-"}${fmtMoneda(String(Math.abs(dif)))})`;
+}
+
+function claseValidacion(td, txt) {
+  td.classList.remove("val-ok", "val-mal");
+  if (txt.startsWith("✔")) td.classList.add("val-ok");
+  else if (txt.startsWith("✖")) td.classList.add("val-mal");
+}
 
 function pintarResultados() {
   const tbody = $("tbody");
@@ -1143,34 +1426,55 @@ function pintarResultados() {
   for (let i = 0; i < resultados.length; i++) {
     const r = resultados[i];
     const tr = document.createElement("tr");
+    const celdas = {};
     for (const campo of CAMPOS) {
       const td = document.createElement("td");
       td.textContent = r[campo] || "";
-      if (campo !== "estado") {
+      celdas[campo] = td;
+      // 'estado' e 'ibc_validacion' son calculados: no editables.
+      if (campo !== "estado" && campo !== "ibc_validacion") {
         td.contentEditable = "true";
-        td.addEventListener("input", () => { resultados[i][campo] = td.textContent.trim(); });
+        td.addEventListener("input", () => {
+          resultados[i][campo] = td.textContent.trim();
+          // Si cambió algo que afecta la validación, recalcular esta fila en vivo.
+          if (["ibc_salud", "ibc_pension", "ibc_lista", "dias_ejec"].includes(campo)) {
+            revalidarFila(resultados[i]);
+            celdas.ibc_ajustado.textContent = resultados[i].ibc_ajustado || "";
+            celdas.ibc_validacion.textContent = resultados[i].ibc_validacion || "";
+            claseValidacion(celdas.ibc_validacion, resultados[i].ibc_validacion || "");
+            actualizarMetricas();
+          }
+          guardarEstadoDebounce();
+        });
       }
       if (CAMPOS_NUM.has(campo)) td.classList.add("num");
       if (campo === "total_aportes") td.classList.add("total-col");
       if (campo === "notas" && r.notas) td.classList.add("warn");
+      if (campo === "ibc_validacion") claseValidacion(td, r.ibc_validacion || "");
       tr.appendChild(td);
     }
     tbody.appendChild(tr);
   }
 
+  actualizarMetricas();
+  $("zonaResultados").classList.remove("hidden");
+  $("zonaResultados").scrollIntoView({ behavior: "smooth" });
+}
+
+function actualizarMetricas() {
   const total = resultados.length;
   const enc = resultados.filter(r => (r.estado || "").toLowerCase().includes("encontrado")
                                      && !(r.estado || "").toLowerCase().startsWith("no")).length;
   const sumaAportes = resultados.reduce((s, r) => s + montoANumero(r.total_aportes), 0);
   const sumaMora = Object.values(morasPlanillas).reduce((s, m) => s + montoANumero(m.intereses), 0);
+  const ibcDif = resultados.filter(r => (r.ibc_validacion || "").startsWith("✖")).length;
 
   $("mTotal").textContent = total;
   $("mEnc").textContent = enc;
   $("mFalta").textContent = total - enc;
   $("mAportes").textContent = "$" + sumaAportes.toLocaleString("en-US");
   $("mMora").textContent = "$" + sumaMora.toLocaleString("en-US");
-  $("zonaResultados").classList.remove("hidden");
-  $("zonaResultados").scrollIntoView({ behavior: "smooth" });
+  $("mIbcDif").textContent = ibcDif;
 }
 
 // ── Excel (ExcelJS: valores numéricos calculables + formato corporativo) ────
@@ -1185,16 +1489,18 @@ const XL_BORDE = { style: "thin", color: { argb: "FFD5DCE8" } };
 const XL_BORDES = { top: XL_BORDE, left: XL_BORDE, bottom: XL_BORDE, right: XL_BORDE };
 
 // Campos cuyo valor se exporta como NÚMERO (moneda COP)
-const CAMPOS_MONEDA = new Set(["ibc_salud","ibc_pension","aporte_pension","aporte_salud",
+const CAMPOS_MONEDA = new Set(["ibc_salud","ibc_pension","ibc_lista","ibc_ajustado",
+                               "aporte_pension","aporte_salud",
                                "aporte_ccf","aporte_riesgos","total_aportes","mora_trabajador"]);
 
 async function construirLibro() {
   const encabezados = ["Nombre Completo","Cédula","Cargo","EPS","ARL","Fondo de Pensión",
     "IBC Salud","IBC Pensión",
+    "IBC Lista","Días Ejec.","IBC Ajustado","Validación IBC",
     "Aporte Pensión","Aporte Salud","Aporte CCF","Aporte Riesgos","Total Aportes",
     "Mora","Período Pensión","Período Salud","N° Planilla",
     "Planilla Origen","Estado","Notas"];
-  const anchos = [34, 14, 18, 26, 22, 24, 13, 13, 13, 12, 11, 13, 13, 11, 13, 12, 14, 36, 19, 40];
+  const anchos = [34, 14, 18, 26, 22, 24, 13, 13, 13, 10, 13, 20, 13, 12, 11, 13, 13, 11, 13, 12, 14, 36, 19, 40];
   const nCols = encabezados.length;
 
   const ahora = new Date();
@@ -1233,8 +1539,11 @@ async function construirLibro() {
   encabezados.forEach((h, idx) => {
     const c = filaHdr.getCell(idx + 1);
     c.value = h;
-    const esAporte = idx + 1 >= 9 && idx + 1 <= 14;
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: esAporte ? XL_NAVY2 : XL_NAVY } };
+    const col = idx + 1;
+    const esAporte = col >= 13 && col <= 18;   // Aporte Pensión … Mora
+    const esIbcVal = col >= 9 && col <= 12;     // IBC Lista … Validación IBC
+    const colorHdr = esAporte ? XL_NAVY2 : (esIbcVal ? "FF1F6F9E" : XL_NAVY);
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: colorHdr } };
     c.font = { name: "Calibri", size: 9, bold: true, color: { argb: "FFFFFFFF" } };
     c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     c.border = XL_BORDES;
@@ -1266,6 +1575,16 @@ async function construirLibro() {
       }
       if (campo === "total_aportes") {
         c.font = { name: "Calibri", size: 9, bold: true, color: { argb: XL_NAVY } };
+      }
+      // Resaltar la validación de IBC: rojo si difiere, verde si coincide.
+      if (campo === "ibc_validacion" && r.ibc_validacion) {
+        if (r.ibc_validacion.startsWith("✖")) {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8D7DA" } };
+          c.font = { name: "Calibri", size: 9, bold: true, color: { argb: "FFB3261E" } };
+        } else if (r.ibc_validacion.startsWith("✔")) {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD8F1E0" } };
+          c.font = { name: "Calibri", size: 9, bold: true, color: { argb: "FF1B7F4D" } };
+        }
       }
     });
   });
@@ -1393,6 +1712,9 @@ $("btnExcel").addEventListener("click", async () => {
     alert("Error generando el Excel: " + err.message);
   }
 });
+
+// ── Al abrir: restaurar lo último guardado en este equipo (si existe) ─────────
+restaurarEstado(true);
 </script>
 </body>
 </html>
