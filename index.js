@@ -294,7 +294,7 @@
           <th class="grp-aporte">Aporte CCF</th><th class="grp-aporte">Aporte Riesgos</th>
           <th class="grp-aporte">Total Aportes</th><th class="grp-aporte">Mora</th>
           <th>Período Pensión</th><th>Período Salud</th><th>N° Planilla</th>
-          <th>Planilla Origen</th><th>Estado</th><th>Notas</th>
+          <th>Tipo Planilla</th><th>Planilla Origen</th><th>Estado</th><th>Notas</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table>
@@ -468,6 +468,38 @@ function extraerNumeroPlanilla(texto) {
   m = texto.match(/planilla\s*(?:n[°ºo.úm]{0,4}|numero|número)?\s*[:#]?\s*(\d{7,12})\b/i);
   if (m) return m[1];
   return "";
+}
+
+// ── Tipo de planilla (letra + descripción) ─────────────────────────────────
+const TIPOS_PLANILLA = {
+  E: "Empleados", Y: "Independientes en empresas", I: "Independientes",
+  A: "Novedad de ingreso", M: "Mora", N: "Correcciones", S: "Servicio doméstico",
+  T: "Beneficiarios SGP", F: "Faltantes aporte patronal SGP", J: "Sentencias judiciales",
+  X: "Empresas liquidadas", U: "Uso UGPP", K: "Estudiantes (riesgos laborales)",
+  H: "Madres sustitutas", O: "Obligaciones UGPP", Q: "Acuerdos de pago UGPP",
+  B: "Piso de Protección Social", D: "Contribución solidaria",
+  P: "Pensionados · pago normal", R: "Pensionados · retroactivos",
+  L: "Pensionados · reliquidación", C: "Pensión ent. territoriales (tercero)",
+  V: "Pensionados · reliquidación 2020+",
+};
+
+function extraerTipoPlanilla(texto) {
+  if (!texto) return "";
+  // 1) Cabecera DATOS GENERALES (Aportes en Línea):
+  //    "per.pensión per.salud CLAVE N°PLANILLA TIPO fecha" → la letra TIPO.
+  let m = texto.match(/^20\d{2}-\d{2}\s+20\d{2}-\d{2}\s+\d{6,12}\s+\d{6,12}\s+([A-Z])\b/m);
+  if (m && m[1] in TIPOS_PLANILLA) return m[1];
+  // 2) Etiqueta del operador: "I-INDEPENDIENTES", "E-EMPLEADOS",
+  //    "I: PLANILLA INDEPENDIENTES", "P-PENSIONADO", etc.
+  m = texto.match(/\b([EYIAMNSTFJXUKHOQBDPRLCV])\s*[-:]\s*(?:PLANILLA\s+)?(?:INDEPENDIENTE|EMPLEADO|PENSIONADO|SERVICIO|MORA|CORRECCION|ESTUDIANTE)/i);
+  if (m && m[1].toUpperCase() in TIPOS_PLANILLA) return m[1].toUpperCase();
+  return "";
+}
+
+function formatoTipoPlanilla(letra) {
+  if (!letra) return "";
+  const L = letra.toUpperCase();
+  return TIPOS_PLANILLA[L] ? `${L} - ${TIPOS_PLANILLA[L]}` : L;
 }
 
 // ── RESUMEN DE PAGO: pares código → entidad de la propia planilla ──────────
@@ -690,7 +722,9 @@ function parsearBloqueTrabajador(bloque, cedula) {
   const nombreParts = [];
   let i = 0;
   while (i < tokens.length && nombreParts.length < 8) {
-    if (/^[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]*$/.test(tokens[i])) {
+    // Palabra de nombre: 2+ letras. Se excluyen letras sueltas (X, T…) que en la
+    // PILA son marcas de novedad y no forman parte del nombre.
+    if (/^[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+$/.test(tokens[i])) {
       nombreParts.push(tokens[i]); i++;
     } else break;
   }
@@ -880,7 +914,8 @@ function parsearTrabajadoresDesdeTexto(texto) {
         // Renglón de solo nombre (o días sueltos): continúa el nombre.
         for (const t of tokensSig) {
           if (/^\d+$/.test(t)) digitosSueltos.push(t);
-          else nombreExtra.push(t);
+          // Se ignoran letras sueltas (X, T…): son marcas de novedad, no nombre.
+          else if (t.length >= 2) nombreExtra.push(t);
         }
       } else {
         // Renglón con datos (códigos, IBC, aportes) del mismo trabajador.
@@ -997,6 +1032,7 @@ function procesarTextoCompleto(texto, nombreArchivo) {
   const [perPension, perSalud] = extraerPeriodos(texto);
   const mora = extraerMoraPlanilla(texto);
   const numPlanilla = extraerNumeroPlanilla(texto);
+  const tipoPlanilla = formatoTipoPlanilla(extraerTipoPlanilla(texto));
   const resumenCod = parsearResumenCodigos(texto);
   const dinamico = extraerParesCodigoNombre(texto);
 
@@ -1059,6 +1095,7 @@ function procesarTextoCompleto(texto, nombreArchivo) {
       periodo_pension: perPension,
       periodo_salud: perSalud,
       num_planilla: numPlanilla,
+      tipo_planilla: tipoPlanilla,
       estado: "Encontrado (planilla)",
       notas: "",
     };
@@ -1090,7 +1127,7 @@ function procesarTextoCompleto(texto, nombreArchivo) {
     }
   }
 
-  return { resultados, mora, numPlanilla, perPension, perSalud };
+  return { resultados, mora, numPlanilla, tipoPlanilla, perPension, perSalud };
 }
 
 // ── Validación de IBC contra el IBC anexado en la lista (Paso 1) ────────────
@@ -1146,7 +1183,7 @@ function similitudNombres(a, b) {
   return (2 * inter) / (ta.size + tb.size);
 }
 
-function cruzarConProfesionales(resultados, profesionales, nombreArchivo, perPension, perSalud, numPlanilla, diasGlobal) {
+function cruzarConProfesionales(resultados, profesionales, nombreArchivo, perPension, perSalud, numPlanilla, tipoPlanilla, diasGlobal) {
   const salida = [];
   for (const prof of profesionales) {
     const cedProf = String(prof.cedula || "").replace(/\D/g, "");
@@ -1176,6 +1213,7 @@ function cruzarConProfesionales(resultados, profesionales, nombreArchivo, perPen
         total_aportes: "", mora_trabajador: "",
         periodo_pension: perPension, periodo_salud: perSalud,
         num_planilla: numPlanilla || "",
+        tipo_planilla: tipoPlanilla || "",
         estado: "No encontrado",
         notas: "No detectado en el PDF — completar manualmente.",
       };
@@ -1516,14 +1554,14 @@ $("btnProcesar").addEventListener("click", async () => {
           ? `${f.name}${numSeg ? " · N° " + numSeg : " · planilla " + (k + 1)}`
           : f.name;
 
-        const { resultados: lote, mora, numPlanilla, perPension, perSalud } =
+        const { resultados: lote, mora, numPlanilla, tipoPlanilla, perPension, perSalud } =
           procesarTextoCompleto(seg, etiqueta);
         if (!lote.length) continue;   // segmento sin cotizantes (p. ej. página de solo resumen)
 
         morasPlanillas[etiqueta] = { ...mora, numPlanilla };
         if (profesionales) {
           resultados.push(...cruzarConProfesionales(
-            lote, profesionales, etiqueta, perPension, perSalud, numPlanilla, diasEjecucionGlobal()));
+            lote, profesionales, etiqueta, perPension, perSalud, numPlanilla, tipoPlanilla, diasEjecucionGlobal()));
         } else {
           resultados.push(...lote);
         }
@@ -1553,7 +1591,7 @@ const CAMPOS = ["nombre","cedula","cargo","eps","arl","fondo_pension",
                 "ibc_lista","dias_ejec","ibc_ajustado","ibc_validacion",
                 "aporte_pension","aporte_salud","aporte_ccf","aporte_riesgos","total_aportes",
                 "mora_trabajador","periodo_pension","periodo_salud","num_planilla",
-                "planilla","estado","notas"];
+                "tipo_planilla","planilla","estado","notas"];
 const CAMPOS_NUM = new Set(["ibc_salud","ibc_pension","ibc_lista","dias_ejec","ibc_ajustado",
                             "aporte_pension","aporte_salud",
                             "aporte_ccf","aporte_riesgos","total_aportes","mora_trabajador"]);
@@ -1662,8 +1700,8 @@ async function construirLibro() {
     "IBC Lista","Días Ejec.","IBC Ajustado","Validación IBC",
     "Aporte Pensión","Aporte Salud","Aporte CCF","Aporte Riesgos","Total Aportes",
     "Mora","Período Pensión","Período Salud","N° Planilla",
-    "Planilla Origen","Estado","Notas"];
-  const anchos = [34, 14, 18, 26, 22, 24, 13, 13, 13, 10, 13, 20, 13, 12, 11, 13, 13, 11, 13, 12, 14, 36, 19, 40];
+    "Tipo Planilla","Planilla Origen","Estado","Notas"];
+  const anchos = [34, 14, 18, 26, 22, 24, 13, 13, 13, 10, 13, 20, 13, 12, 11, 13, 13, 11, 13, 12, 14, 26, 36, 19, 40];
   const nCols = encabezados.length;
 
   const ahora = new Date();
