@@ -883,6 +883,83 @@ function parsearBloqueTrabajador(bloque, cedula) {
   };
 }
 
+// ── Parser del formato PagoSimple (AUTOLIQUIDACION CONSOLIDADA) ─────────────
+// PagoSimple NO numera al cotizante ("1 CC ..."), por eso el parser general no
+// lo detecta. Su fila de detalle luce así (un único cotizante por planilla):
+//   "CC 7701070 00 (231001) COLFONDOS $ 1.423.500 $ 227.800 (EPS005) EPS
+//    SANITAS $ 1.423.500 $ 178.000 6,960 $ 1.423.500 $ 99.100 (NIN-CC) NINGUN
+//    JOSE RICARDO VASQUEZ PASTRANA 57 0 30 30 30 0"
+function parsearPagoSimple(texto) {
+  if (!texto || !/AUTOLIQUIDACION\s+CONSOLIDADA|PAGOSIMPLE/i.test(texto)) return [];
+  const T = texto.normalize("NFD").replace(/[̀-ͯ]/g, "");   // sin tildes
+
+  // Región de detalle: entre "DETALLE DEL APORTANTE" y "III.TOTALES".
+  let region = T;
+  const ini = T.search(/DETALLE\s+DEL\s+APORTANTE/i);
+  if (ini > -1) {
+    const rest = T.slice(ini);
+    const fin = rest.search(/III?\.?\s*TOTALES|\bTOTALES\b/i);
+    region = fin > -1 ? rest.slice(0, fin) : rest;
+  }
+
+  // Cédula del cotizante.
+  const tipos = TIPOS_DOC.join("|");
+  const mCed = region.match(new RegExp(`\\b(?:${tipos})\\s*(\\d{6,12})\\b`));
+  if (!mCed) return [];
+  const cedula = mCed[1];
+
+  // Códigos de administradora (van entre paréntesis).
+  const mAfp = region.match(/\((\d{4,6}|25-\d{1,2}|FCS\d{2})\)/);
+  const mEps = region.match(/\((EPS[A-Z0-9]+|ESS[A-Z0-9]+|EAS\d+|RES\d+|CCFC\d+)\)/);
+
+  // Montos con separador de miles por punto ("1.423.500"), en orden:
+  //   IBC pens, aporte pens, IBC salud, aporte salud, IBC riesgos, aporte riesgos, [total]
+  const montos = region.match(/\b\d{1,3}(?:\.\d{3})+\b/g) || [];
+  const g = (n) => (montos[n] ? fmtMoneda(montos[n]) : "");
+
+  // Días cotizados: aparecen repetidos ("30 30 30" / "24 24 24").
+  const mDias = region.match(/\b(\d{1,2})\s+\1\s+\1\b/);
+
+  // ARL: el nombre está en el encabezado ("ARP  ARL SURA"); se mapea a su código.
+  let arlCod = "";
+  const mArp = T.match(/\bARP\b[^\n]{0,40}?(ARL\s+[A-Z]+|POSITIVA|COLMENA|MAPFRE|EQUIDAD|BOLIVAR|AURORA|ALFA|COLPATRIA|SANITAS)/i);
+  if (mArp) {
+    const objetivo = mArp[1].toUpperCase().replace(/\bARL\b/g, "").trim();
+    for (const [cod, nom] of Object.entries(CODIGOS_ARL)) {
+      const n = nom.toUpperCase().replace(/\bARL\b/g, "").trim();
+      if (objetivo && (n.includes(objetivo) || objetivo.includes(n.split(" ")[0]))) { arlCod = cod; break; }
+    }
+  }
+
+  // Nombre: de la Razón Social; si no, del tramo en MAYÚSCULAS previo a la edad.
+  let nombre = "";
+  const mNom = T.match(/RAZON\s+SOCIAL\s+([A-ZÑ][A-ZÑ]+(?:\s+[A-ZÑ]+){1,4})/);
+  if (mNom) nombre = mNom[1].trim();
+  if (!nombre) {
+    const mN2 = region.match(/(?:NINGUN[A-Z]*\s+)?([A-ZÑ]{2,}(?:\s+[A-ZÑ]{2,}){1,4})\s+\d{1,3}\s/);
+    if (mN2) nombre = mN2[1].trim();
+  }
+  const STOP = new Set(["NINGUN","NINGUNA","NIN","SANITAS","COLFONDOS","PORVENIR",
+    "PROTECCION","COLPENSIONES","SURA","POSITIVA","EPS","AFP","ARL","INDEPENDIENTE",
+    "NATURAL","UNICO","ACACIAS","META","DOCUMENTO","DIRECCION","TELEFONO","RAZON","SOCIAL"]);
+  nombre = nombre.split(/\s+/).filter(w => !STOP.has(w)).join(" ").trim();
+  if (nombre.replace(/[^A-ZÑ]/g, "").length < 3) return [];
+
+  const totalNum = montoANumero(g(1)) + montoANumero(g(3)) + montoANumero(g(5));
+  return [{
+    cedula, nombre,
+    afp: mAfp ? mAfp[1] : "",
+    eps: mEps ? mEps[1] : "",
+    arl: arlCod,
+    ccf: "",
+    dias_pila: mDias ? mDias[1] : "",
+    ibc_pension: g(0), ibc_salud: g(2), ibc_arl: g(4),
+    aporte_pension: g(1), aporte_salud: g(3),
+    aporte_ccf: "", aporte_riesgos: g(5),
+    total_aportes: montos[6] ? fmtMoneda(montos[6]) : (totalNum > 0 ? fmtMoneda(String(totalNum)) : ""),
+  }];
+}
+
 function parsearTrabajadoresDesdeTexto(texto) {
   if (!texto) return [];
 
@@ -984,6 +1061,60 @@ function dedupTrabajadores(trabajadores) {
   return [...vistos.values()];
 }
 
+// ── División de un PDF compilado en planillas individuales ─────────────────
+// Un mismo PDF puede traer DECENAS de planillas (varios meses, varios
+// aportantes, y la misma persona repetida). Antes de parsear hay que separar
+// cada planilla; de lo contrario el dedup por cédula colapsa las repeticiones
+// y "desaparecen" casi todas las planillas.
+function dividirEnPlanillas(texto) {
+  if (!texto) return [];
+  const lineas = texto.split("\n");
+  // Versión en MAYÚSCULAS y sin tildes para detectar encabezados de página.
+  const U = lineas.map(l =>
+    l.trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+
+  // ¿La página que empieza en la línea i es de DETALLE (inicia planilla) o una
+  // continuación (RESUMEN DE PAGO de la misma planilla)?
+  const iniciaDetalle = (i) => {
+    for (let k = i; k < Math.min(i + 8, U.length); k++) {
+      if (U[k].includes("LIQUIDACION DETALLADA DE APORTES")) return true;
+      if (U[k].startsWith("RESUMEN DE PAGO")) return false;
+    }
+    return false;
+  };
+
+  const esInicioPlanilla = (i) => {
+    const l = U[i];
+    if (l.startsWith("PLANILLA INTEGRADA AUTOLIQUIDACION APORTES")) return true;      // SOI
+    if (l.startsWith("PLANILLA INTEGRADA DE AUTOLIQUIDACION DE APORTES")) {            // Compensar
+      // La PAG 2 de 2 (DETALLE POR COTIZANTE) es continuación, no inicio.
+      for (let k = i; k < Math.min(i + 5, U.length); k++)
+        if (U[k].includes("PAG 2 DE")) return false;
+      return true;
+    }
+    if (l.includes("AUTOLIQUIDACION CONSOLIDADA")) return true;                        // PagoSimple
+    if (l === "PLANILLA RESUMEN") return iniciaDetalle(i);                             // Aportes en Línea
+    return false;
+  };
+
+  const cortes = [];
+  for (let i = 0; i < lineas.length; i++)
+    if (esInicioPlanilla(i)) cortes.push(i);
+
+  // Si no se reconoce el formato (o hay una sola), se trata como una única planilla.
+  if (cortes.length <= 1) return [texto];
+
+  const segmentos = [];
+  for (let c = 0; c < cortes.length; c++) {
+    const fin = c + 1 < cortes.length ? cortes[c + 1] : lineas.length;
+    segmentos.push(lineas.slice(cortes[c], fin).join("\n"));
+  }
+  // Texto anterior al primer corte se adjunta al primer segmento.
+  if (cortes[0] > 0)
+    segmentos[0] = lineas.slice(0, cortes[0]).join("\n") + "\n" + segmentos[0];
+  return segmentos;
+}
+
 // ── Procesamiento principal (modo "todos los cotizantes") ──────────────────
 function procesarTextoCompleto(texto, nombreArchivo) {
   const [perPension, perSalud] = extraerPeriodos(texto);
@@ -1011,6 +1142,8 @@ function procesarTextoCompleto(texto, nombreArchivo) {
   };
 
   let trabajadores = parsearTrabajadoresDesdeTexto(texto);
+  const pagoSimple = parsearPagoSimple(texto);
+  if (pagoSimple.length) trabajadores = trabajadores.concat(pagoSimple);
 
   let candidatos = trabajadores.filter(w =>
     (w.afp || w.eps || w.arl) &&
@@ -1493,18 +1626,34 @@ $("btnProcesar").addEventListener("click", async () => {
 
       // pdf.js consume el buffer: pasar una copia
       const texto = await extraerTextoPdf(f.buffer.slice(0));
-      const { resultados: lote, mora, numPlanilla, perPension, perSalud } =
-        procesarTextoCompleto(texto, f.name);
-      morasPlanillas[f.name] = { ...mora, numPlanilla };
 
-      if (profesionales) {
-        resultados.push(...cruzarConProfesionales(
-          lote, profesionales, f.name, perPension, perSalud, numPlanilla, diasEjecucionGlobal()));
-      } else {
-        resultados.push(...lote);
+      // Un PDF puede traer varias planillas compiladas: se separan y se procesa
+      // cada una por su cuenta (período, número, mora y dedup independientes).
+      const planillas = dividirEnPlanillas(texto);
+      let cotizantesArchivo = 0;
+
+      for (let k = 0; k < planillas.length; k++) {
+        const seg = planillas[k];
+        const numSeg = extraerNumeroPlanilla(seg);
+        const etiqueta = planillas.length > 1
+          ? `${f.name}${numSeg ? " · N° " + numSeg : " · planilla " + (k + 1)}`
+          : f.name;
+
+        const { resultados: lote, mora, numPlanilla, perPension, perSalud } =
+          procesarTextoCompleto(seg, etiqueta);
+        if (!lote.length) continue;   // segmento sin cotizantes (p. ej. página de solo resumen)
+
+        morasPlanillas[etiqueta] = { ...mora, numPlanilla };
+        if (profesionales) {
+          resultados.push(...cruzarConProfesionales(
+            lote, profesionales, etiqueta, perPension, perSalud, numPlanilla, diasEjecucionGlobal()));
+        } else {
+          resultados.push(...lote);
+        }
+        cotizantesArchivo += lote.length;
       }
 
-      if (!lote.length) {
+      if (!cotizantesArchivo) {
         st.textContent = `⚠️ ${f.name}: no se detectaron cotizantes. ` +
           "Si la planilla es una imagen escaneada, el texto no es legible automáticamente.";
       }
