@@ -2104,10 +2104,23 @@ $("btnExcel").addEventListener("click", async () => {
 //   3. Guarda y sube los cambios. Listo: cada opinión llegará a ese correo.
 const WEB3FORMS_ACCESS_KEY = "4dc424f9-8b76-46bd-a631-1d6dd7365cf7";
 
+// Límite anti-spam: máximo un envío cada 10 minutos por navegador.
+const FEEDBACK_MINUTOS_ESPERA = 10;
+const FEEDBACK_STORAGE_KEY = "corban_feedback_ultimo";
+
 // Devuelve la calificación seleccionada (1-5) o 0 si no hay ninguna.
 function calificacionSeleccionada() {
   const marcado = document.querySelector('input[name="calificacion"]:checked');
   return marcado ? Number(marcado.value) : 0;
+}
+
+// Minutos que faltan para poder enviar otra reseña (0 = ya puede enviar).
+function minutosRestantesFeedback() {
+  let previo = 0;
+  try { previo = Number(localStorage.getItem(FEEDBACK_STORAGE_KEY) || 0); } catch (e) {}
+  if (!previo) return 0;
+  const restante = FEEDBACK_MINUTOS_ESPERA - (Date.now() - previo) / 60000;
+  return restante > 0 ? Math.ceil(restante) : 0;
 }
 
 // Muestra un mensaje de estado bajo el botón de feedback.
@@ -2130,6 +2143,12 @@ async function enviarFeedback() {
   // Si aún no se configuró la clave, avisar en vez de fallar en silencio.
   if (!WEB3FORMS_ACCESS_KEY || WEB3FORMS_ACCESS_KEY === "PEGA_AQUI_TU_ACCESS_KEY") {
     mostrarEstadoFeedback("El envío de opiniones aún no está configurado. Avísale al administrador.", "error");
+    return;
+  }
+  // Anti-spam: solo se permite una reseña cada 10 minutos por navegador.
+  const espera = minutosRestantesFeedback();
+  if (espera > 0) {
+    mostrarEstadoFeedback(`Ya enviaste una reseña hace poco. Podrás enviar otra en ${espera} min.`, "error");
     return;
   }
 
@@ -2156,6 +2175,8 @@ async function enviarFeedback() {
     });
     const json = await resp.json();
     if (json.success) {
+      // Registrar la hora del envío para aplicar la espera de 10 minutos.
+      try { localStorage.setItem(FEEDBACK_STORAGE_KEY, String(Date.now())); } catch (e) {}
       mostrarEstadoFeedback("¡Gracias por tu opinión! 🙌", "ok");
       $("fbTexto").value = "";
       const marcado = document.querySelector('input[name="calificacion"]:checked');
