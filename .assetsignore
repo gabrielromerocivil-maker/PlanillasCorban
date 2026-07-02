@@ -1,0 +1,5 @@
+# Archivos que NO se deben publicar en Cloudflare Pages (solo el sitio).
+.github
+.assetsignore
+README.md
+index_backup_*.html
