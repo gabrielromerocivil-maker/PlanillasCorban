@@ -253,6 +253,39 @@
     .header .titulo { font-size: 1.2rem; }
     .acciones .btn, .acciones .btn.rojo { flex: 1 1 100%; min-width: 0; }
   }
+
+  /* ── Calificación + feedback ── */
+  .feedback {
+    background: #fff; border: 1px solid var(--borde); border-top: 4px solid var(--celeste);
+    border-radius: 12px; padding: 22px 26px; margin-top: 22px;
+    box-shadow: 0 2px 14px rgba(49,75,127,.06);
+  }
+  .feedback .fb-titulo {
+    font-family: 'Montserrat', sans-serif; font-weight: 800; color: var(--navy);
+    font-size: 1.05rem; letter-spacing: .3px;
+  }
+  .feedback .fb-sub { color: var(--muted); font-size: .84rem; margin: 4px 0 14px; }
+  /* Estrellas: se pintan con dirección inversa para poder resaltar en hover */
+  .estrellas { display: inline-flex; flex-direction: row-reverse; gap: 4px; }
+  .estrellas input { display: none; }
+  .estrellas label {
+    font-size: 2rem; color: #D5DCE8; cursor: pointer; line-height: 1;
+    transition: color .12s, transform .12s;
+  }
+  .estrellas label:hover, .estrellas label:hover ~ label,
+  .estrellas input:checked ~ label { color: #F2B705; }
+  .estrellas label:hover { transform: scale(1.12); }
+  .fb-texto {
+    display: block; width: 100%; margin-top: 14px; padding: 11px 13px;
+    border: 1px solid var(--borde); border-radius: 8px; resize: vertical; min-height: 84px;
+    font-family: 'Open Sans', sans-serif; font-size: .9rem; color: var(--text);
+  }
+  .fb-texto:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 2px #EAF6FF; }
+  .fb-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 14px; }
+  .fb-fila .btn { width: auto; flex: 0 0 auto; padding: 11px 26px; }
+  .fb-estado { font-size: .86rem; color: var(--muted); }
+  .fb-estado.ok    { color: #1B7F4D; font-weight: 600; }
+  .fb-estado.error { color: #B3261E; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -368,6 +401,29 @@
     </div>
     <div style="margin-top:16px;">
       <button class="btn" id="btnExcel">📥 DESCARGAR EXCEL</button>
+    </div>
+  </div>
+
+  <!-- ── Calificación y comentarios del usuario ── -->
+  <div class="feedback">
+    <div class="fb-titulo">¿Te sirvió esta herramienta?</div>
+    <div class="fb-sub">Califica de 1 a 5 estrellas y, si quieres, déjanos un comentario. Tu opinión llega directo al equipo.</div>
+
+    <!-- Radios en orden inverso (5→1) para que el resaltado por hover funcione con CSS -->
+    <div class="estrellas" id="estrellas">
+      <input type="radio" name="calificacion" id="est5" value="5"><label for="est5" title="Excelente">★</label>
+      <input type="radio" name="calificacion" id="est4" value="4"><label for="est4" title="Buena">★</label>
+      <input type="radio" name="calificacion" id="est3" value="3"><label for="est3" title="Regular">★</label>
+      <input type="radio" name="calificacion" id="est2" value="2"><label for="est2" title="Mala">★</label>
+      <input type="radio" name="calificacion" id="est1" value="1"><label for="est1" title="Muy mala">★</label>
+    </div>
+
+    <textarea class="fb-texto" id="fbTexto" maxlength="1500"
+      placeholder="Cuéntanos qué te pareció o qué mejorarías (opcional)…"></textarea>
+
+    <div class="fb-fila">
+      <button class="btn" id="btnEnviarFeedback">ENVIAR OPINIÓN</button>
+      <span class="fb-estado" id="fbEstado"></span>
     </div>
   </div>
 
@@ -2036,6 +2092,86 @@ $("btnExcel").addEventListener("click", async () => {
     alert("Error generando el Excel: " + err.message);
   }
 });
+
+// ── Calificación con estrellas + envío de comentarios por correo ─────────────
+// El envío usa Web3Forms (https://web3forms.com): servicio gratuito que reenvía
+// el formulario al correo registrado, sin necesidad de servidor propio.
+//
+// CÓMO ACTIVARLO (paso único):
+//   1. Entra a https://web3forms.com e ingresa tu correo (grupocorbansas@gmail.com
+//      o gabrielromerocivil@gmail.com). Te llegará una "Access Key" gratuita.
+//   2. Pega esa clave abajo, reemplazando PEGA_AQUI_TU_ACCESS_KEY.
+//   3. Guarda y sube los cambios. Listo: cada opinión llegará a ese correo.
+const WEB3FORMS_ACCESS_KEY = "PEGA_AQUI_TU_ACCESS_KEY";
+
+// Devuelve la calificación seleccionada (1-5) o 0 si no hay ninguna.
+function calificacionSeleccionada() {
+  const marcado = document.querySelector('input[name="calificacion"]:checked');
+  return marcado ? Number(marcado.value) : 0;
+}
+
+// Muestra un mensaje de estado bajo el botón de feedback.
+function mostrarEstadoFeedback(texto, tipo) {
+  const est = $("fbEstado");
+  est.textContent = texto;
+  est.className = "fb-estado" + (tipo ? " " + tipo : "");
+}
+
+// Envía la calificación y el comentario al correo mediante Web3Forms.
+async function enviarFeedback() {
+  const estrellas = calificacionSeleccionada();
+  const comentario = $("fbTexto").value.trim();
+
+  // Validación: exigir al menos la calificación en estrellas.
+  if (!estrellas) {
+    mostrarEstadoFeedback("Por favor selecciona de 1 a 5 estrellas antes de enviar.", "error");
+    return;
+  }
+  // Si aún no se configuró la clave, avisar en vez de fallar en silencio.
+  if (!WEB3FORMS_ACCESS_KEY || WEB3FORMS_ACCESS_KEY === "PEGA_AQUI_TU_ACCESS_KEY") {
+    mostrarEstadoFeedback("El envío de opiniones aún no está configurado. Avísale al administrador.", "error");
+    return;
+  }
+
+  const btn = $("btnEnviarFeedback");
+  btn.disabled = true;
+  mostrarEstadoFeedback("Enviando tu opinión…", "");
+
+  // Datos que se incluyen en el correo.
+  const datos = {
+    access_key: WEB3FORMS_ACCESS_KEY,
+    subject: `Feedback Planillas Corban · ${estrellas}★`,
+    from_name: "Sistema de Planillas Corban",
+    Calificacion: `${estrellas} de 5 estrellas`,
+    Comentario: comentario || "(sin comentario)",
+    Fecha: new Date().toLocaleString("es-CO"),
+    Pagina: location.href,
+  };
+
+  try {
+    const resp = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(datos),
+    });
+    const json = await resp.json();
+    if (json.success) {
+      mostrarEstadoFeedback("¡Gracias por tu opinión! 🙌", "ok");
+      $("fbTexto").value = "";
+      const marcado = document.querySelector('input[name="calificacion"]:checked');
+      if (marcado) marcado.checked = false;
+    } else {
+      mostrarEstadoFeedback("No se pudo enviar. Intenta de nuevo en un momento.", "error");
+    }
+  } catch (err) {
+    console.error(err);
+    mostrarEstadoFeedback("No hay conexión o el servicio no respondió. Intenta de nuevo.", "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$("btnEnviarFeedback").addEventListener("click", enviarFeedback);
 
 // ── Al abrir: restaurar lo último guardado en este equipo (si existe) ─────────
 restaurarEstado(true);
