@@ -1065,6 +1065,13 @@ function parsearTrabajadoresDesdeTexto(texto) {
 
   const tipos = TIPOS_DOC.join("|");
   const patron = new RegExp(`^\\s*(\\d{1,3})\\s+(${tipos})\\s+(\\d{6,12})\\b`);
+  // Compensar: si la cédula no cabe en su columna (p. ej. 10 dígitos) se imprime
+  // en el renglón de abajo, a veces junto al resto del nombre:
+  //   "1 CC MORA RUIZ DANIEL FERNANDO 1 0 S 230301 …"
+  //   "1049651515"
+  const patronSinCedula = new RegExp(`^\\s*(\\d{1,3})\\s+(${tipos})\\s+(?=[A-ZÁÉÍÓÚÑ])`);
+  const rxCedulaSola = /^\s*(\d{6,12})(?=\s|$)/;
+  const esInicioTrabajador = (l) => patron.test(l) || patronSinCedula.test(l);
   const rxTokenCont = /^(?:[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]*|\d{1,2})$/;
   const rxFinSeccion = /^(sucursal|centro|ciudad|total|p[aá]gina|resumen)/i;
 
@@ -1073,8 +1080,17 @@ function parsearTrabajadoresDesdeTexto(texto) {
 
   for (let i = 0; i < lineas.length; i++) {
     const m = lineas[i].match(patron);
-    if (!m) continue;
-    const cedula = m[3];
+    let cedula = m ? m[3] : "";
+    let lineaCedula = -1;
+    if (!m) {
+      if (!patronSinCedula.test(lineas[i])) continue;
+      for (let j = i + 1; j < Math.min(i + 3, lineas.length); j++) {
+        if (esInicioTrabajador(lineas[j])) break;
+        const mc = lineas[j].match(rxCedulaSola);
+        if (mc) { cedula = mc[1]; lineaCedula = j; break; }
+      }
+      if (!cedula) continue;
+    }
 
     // El registro de un trabajador puede repartirse en varias líneas
     // reconstruidas por coordenada Y: el nombre puede partirse en dos renglones
@@ -1085,9 +1101,10 @@ function parsearTrabajadoresDesdeTexto(texto) {
     const nombreExtra = [];
     const digitosSueltos = [];
     for (let j = i + 1; j < Math.min(i + 7, lineas.length); j++) {
-      const sig = lineas[j].trim();
+      if (esInicioTrabajador(lineas[j])) break;
+      const sig = (j === lineaCedula ? lineas[j].replace(cedula, "") : lineas[j]).trim();
       if (!sig) continue;
-      if (patron.test(lineas[j]) || rxFinSeccion.test(sig)) break;
+      if (rxFinSeccion.test(sig)) break;
       const tokensSig = sig.split(/\s+/);
       if (tokensSig.every(t => rxTokenCont.test(t))) {
         // Renglón de solo nombre (o días sueltos): continúa el nombre.
