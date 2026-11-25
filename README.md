@@ -1,7 +1,9 @@
-# Planillas Corban
+# Planillas de Seguridad Social (PILA)
 
-Aplicativo web interno de Grupo Corban SAS para leer planillas PILA (seguridad
-social) en PDF y exportarlas a Excel. Es un sitio **estático** (un solo
+Autor: **Gabriel Romero, Ingeniero Civil**.
+
+Aplicativo web para leer planillas PILA (seguridad social) en PDF y exportarlas
+a Excel. Es un sitio **estático** (un solo
 `index.html`, sin servidor ni build), desplegado en **Cloudflare**.
 
 ## Cómo correrlo localmente
